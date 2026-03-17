@@ -25,7 +25,8 @@ def _download_audio(video_id: str, tmp_dir: str) -> str:
     out_template = os.path.join(tmp_dir, f"{video_id}.%(ext)s")
     last_exc = None
 
-    for attempt, delay in enumerate([0] + RETRY_DELAYS):
+    attempts = [0] + RETRY_DELAYS
+    for attempt, delay in enumerate(attempts):
         if delay:
             time.sleep(delay)
         proc = subprocess.run(
@@ -35,7 +36,7 @@ def _download_audio(video_id: str, tmp_dir: str) -> str:
         if proc.returncode == 0:
             return _find_audio(tmp_dir, video_id)
         last_exc = proc.stderr.strip()
-        if attempt == len(RETRY_DELAYS):
+        if attempt == len(attempts) - 1:  # last attempt
             break
 
     raise WhisperError(f"yt-dlp download failed after retries: {last_exc}")
@@ -44,6 +45,8 @@ def _find_audio(tmp_dir: str, video_id: str) -> str:
     matches = glob.glob(os.path.join(tmp_dir, f"{video_id}.*"))
     if not matches:
         raise WhisperError(f"No audio file found for {video_id} in {tmp_dir}")
+    # Sort by modification time descending (newest first) for determinism
+    matches.sort(key=os.path.getmtime, reverse=True)
     return matches[0]
 
 def _transcribe(audio_path: str, model_name: str) -> tuple[str, str]:

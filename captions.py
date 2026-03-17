@@ -34,7 +34,8 @@ def fetch_captions(video_id: str) -> tuple[str, str]:
     Raises NoTranscriptError if unavailable after retries.
     """
     last_exc = None
-    for attempt, delay in enumerate([0] + RETRY_DELAYS):
+    attempts = [0] + RETRY_DELAYS
+    for attempt, delay in enumerate(attempts):
         if delay:
             time.sleep(delay)
         try:
@@ -47,7 +48,7 @@ def fetch_captions(video_id: str) -> tuple[str, str]:
             raise NoTranscriptError(str(e)) from e
         except Exception as e:
             last_exc = e
-            if attempt == len(RETRY_DELAYS):
+            if attempt == len(attempts) - 1:  # last attempt
                 break
     raise NoTranscriptError(f"Caption fetch failed after retries: {last_exc}") from last_exc
 
@@ -71,4 +72,4 @@ def _select_track(transcript_list):
     # 4. First auto-generated any language
     if candidates:
         return candidates[0]
-    raise NoTranscriptFound(None, None)
+    raise NoTranscriptError("No caption tracks available")
