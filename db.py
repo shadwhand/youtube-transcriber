@@ -49,6 +49,6 @@ def get_summaries(conn: sqlite3.Connection, video_ids: list[str]) -> list[dict]:
     placeholders = ",".join("?" * len(video_ids))
     rows = conn.execute(
         f"SELECT video_id, title, summary FROM videos WHERE video_id IN ({placeholders})",
-        video_ids
+        tuple(video_ids)
     ).fetchall()
     return [dict(r) for r in rows]

@@ -1,5 +1,5 @@
 # tests/test_db.py
-import os, tempfile, pytest
+import pytest
 from db import init_db, insert_video, get_video, video_exists, get_summaries
 
 @pytest.fixture
@@ -52,3 +52,10 @@ def test_get_summaries_returns_matching_ids(tmp_db):
     results = get_summaries(tmp_db, ["id1", "id999"])
     assert len(results) == 1
     assert results[0]["video_id"] == "id1"
+
+def test_get_video_returns_none_for_missing(tmp_db):
+    result = get_video(tmp_db, "nonexistent")
+    assert result is None
+
+def test_get_summaries_empty_list(tmp_db):
+    assert get_summaries(tmp_db, []) == []
