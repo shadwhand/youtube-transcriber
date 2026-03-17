@@ -20,3 +20,13 @@ def test_handles_empty_string():
 
 def test_exception_returns_none():
     assert extract_summary(None) is None
+
+def test_joined_result_within_500_chars():
+    # Two 249-char tokens + one 1-char token: without space accounting, naive sum is 499
+    # but joined string would be 499+1+249+1+1 = 751 chars
+    token1 = "A" * 249 + "."
+    token2 = "B" * 249 + "."
+    token3 = "C."
+    text = f"{token1} {token2} {token3} More text."
+    result = extract_summary(text)
+    assert len(result) <= 500

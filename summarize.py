@@ -9,10 +9,13 @@ def extract_summary(text: str | None) -> str | None:
         collected = []
         char_count = 0
         for token in tokens:
-            if len(collected) >= 3 or char_count >= 500:
+            if len(collected) >= 3:
                 break
+            prospective = char_count + len(token) + (1 if collected else 0)
+            if prospective > 500:
+                break
+            char_count = prospective
             collected.append(token)
-            char_count += len(token)
         return " ".join(collected)
     except Exception:
         return None

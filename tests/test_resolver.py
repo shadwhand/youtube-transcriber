@@ -19,3 +19,7 @@ def test_short_url():
     result = classify_url("https://youtu.be/dQw4w9WgXcQ")
     assert isinstance(result, VideoInfo)
     assert result.video_id == "dQw4w9WgXcQ"
+
+def test_playlist_default_videos_is_empty_list():
+    result = PlaylistInfo(playlist_id="PLtest")
+    assert result.videos == []

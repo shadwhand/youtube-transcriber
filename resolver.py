@@ -1,6 +1,6 @@
 # resolver.py
-import subprocess, json, sys
-from dataclasses import dataclass
+import subprocess, json
+from dataclasses import dataclass, field
 from urllib.parse import urlparse, parse_qs
 
 @dataclass
@@ -13,11 +13,7 @@ class VideoInfo:
 class PlaylistInfo:
     playlist_id: str
     playlist_title: str = ""
-    videos: list[VideoInfo] = None
-
-    def __post_init__(self):
-        if self.videos is None:
-            self.videos = []
+    videos: list["VideoInfo"] = field(default_factory=list)
 
 def classify_url(url: str) -> VideoInfo | PlaylistInfo:
     parsed = urlparse(url)
@@ -62,7 +58,10 @@ def resolve(url: str) -> VideoInfo | PlaylistInfo:
 
 def _run_ytdlp(args: list[str]) -> str:
     cmd = ["yt-dlp"] + args
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"yt-dlp timed out after 120s: {' '.join(cmd)}") from e
     if proc.returncode != 0:
         raise RuntimeError(f"yt-dlp failed: {proc.stderr.strip()}")
     return proc.stdout
