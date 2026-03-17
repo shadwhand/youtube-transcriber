@@ -11,10 +11,15 @@ def test_build_result_json():
     )
     data = json.loads(result)
     assert data["total"] == 3
+    assert data["captions"] == 1
+    assert data["whisper"] == 1
+    assert data["skipped"] == 1
+    assert data["live"] == 0
+    assert data["failed"] == 0
     assert data["transcribed_ids"] == ["a", "b"]
+    assert data["failures"] == []
 
 def test_run_summaries_mode(tmp_path, capsys):
-    import sqlite3
     from db import init_db, insert_video
 
     db_path = tmp_path / "transcripts.db"
@@ -25,9 +30,9 @@ def test_run_summaries_mode(tmp_path, capsys):
         "method": "captions", "whisper_model": None,
         "summary": "A summary.", "transcript_path": "/tmp/abc.txt"
     })
-    conn.close()
 
-    run_summaries_mode(["abc", "missing"], str(db_path))
+    run_summaries_mode(["abc", "missing"], conn)
+    conn.close()
     captured = capsys.readouterr()
     data = json.loads(captured.out)
     assert len(data) == 1

@@ -23,121 +23,125 @@ def main():
 
     TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
     conn = init_db(str(DB_PATH))
+    try:
+        if args.summaries:
+            run_summaries_mode(args.summaries, conn)
+            return
 
-    if args.summaries:
-        run_summaries_mode(args.summaries, str(DB_PATH))
-        return
+        if not args.url:
+            parser.error("URL is required unless using --summaries")
 
-    if not args.url:
-        parser.error("URL is required unless using --summaries")
+        resolved = resolve(args.url)
 
-    resolved = resolve(args.url)
+        if isinstance(resolved, PlaylistInfo):
+            videos = resolved.videos
+            playlist_id = resolved.playlist_id
+            playlist_title = resolved.playlist_title
+        else:
+            videos = [resolved]
+            playlist_id = None
+            playlist_title = None
 
-    if isinstance(resolved, PlaylistInfo):
-        videos = resolved.videos
-        playlist_id = resolved.playlist_id
-        playlist_title = resolved.playlist_title
-    else:
-        videos = [resolved]
-        playlist_id = None
-        playlist_title = None
+        total = len(videos)
+        counts = {"captions": 0, "whisper": 0, "skipped": 0, "live": 0, "failed": 0}
+        transcribed_ids = []
+        failures = []
 
-    total = len(videos)
-    counts = {"captions": 0, "whisper": 0, "skipped": 0, "live": 0, "failed": 0}
-    transcribed_ids = []
-    failures = []
+        for i, video in enumerate(videos, 1):
+            prefix = f"[{i}/{total}] {video.video_id} — \"{video.title}\""
 
-    for i, video in enumerate(videos, 1):
-        prefix = f"[{i}/{total}] {video.video_id} — \"{video.title}\""
-
-        if video.is_live:
-            print(f"{prefix} — skipped (live stream)", file=sys.stderr)
-            counts["live"] += 1
-            continue
-
-        if not args.force and video_exists(conn, video.video_id):
-            print(f"{prefix} — skipped (already transcribed)", file=sys.stderr)
-            counts["skipped"] += 1
-            continue
-
-        transcript_path = TRANSCRIPTS_DIR / f"{video.video_id}.txt"
-        text, lang, method, whisper_model = None, None, None, None
-
-        # Try captions
-        print(f"{prefix} — fetching captions...", end=" ", file=sys.stderr, flush=True)
-        try:
-            text, lang = fetch_captions(video.video_id)
-            method = "captions"
-            print("done", file=sys.stderr)
-        except NoTranscriptError:
-            print("no captions, downloading audio... transcribing...", end=" ", file=sys.stderr, flush=True)
-            try:
-                with tempfile.TemporaryDirectory() as tmp_dir:
-                    text, lang = transcribe_audio(video.video_id, args.model, tmp_dir)
-                method = "whisper"
-                whisper_model = args.model
-                print("done", file=sys.stderr)
-            except WhisperError as e:
-                print(f"FAILED: {e}", file=sys.stderr)
-                counts["failed"] += 1
-                failures.append({"video_id": video.video_id, "reason": str(e)})
+            if video.is_live:
+                print(f"{prefix} — skipped (live stream)", file=sys.stderr)
+                counts["live"] += 1
                 continue
 
-        # Write transcript (atomic via .tmp)
-        tmp_path = transcript_path.with_suffix(".tmp")
-        tmp_path.write_text(text, encoding="utf-8")
-        tmp_path.replace(transcript_path)
+            if not args.force and video_exists(conn, video.video_id):
+                print(f"{prefix} — skipped (already transcribed)", file=sys.stderr)
+                counts["skipped"] += 1
+                continue
 
-        # Store in DB
-        summary = extract_summary(text)
-        insert_video(conn, {
-            "video_id": video.video_id,
-            "title": video.title,
-            "url": f"https://www.youtube.com/watch?v={video.video_id}",
-            "playlist_id": playlist_id,
-            "playlist_title": playlist_title,
-            "language": lang,
-            "method": method,
-            "whisper_model": whisper_model,
-            "summary": summary,
-            "transcript_path": str(transcript_path),
-        })
-        counts[method] += 1
-        transcribed_ids.append(video.video_id)
+            transcript_path = TRANSCRIPTS_DIR / f"{video.video_id}.txt"
+            text, lang, method, whisper_model = None, None, None, None
 
-    print(
-        f"Done. {total} videos encountered: "
-        f"{counts['captions']} captions, {counts['whisper']} Whisper, "
-        f"{counts['skipped']} skipped, {counts['failed']} failed.",
-        file=sys.stderr
-    )
+            # Try captions
+            print(f"{prefix} — fetching captions...", end=" ", file=sys.stderr, flush=True)
+            try:
+                text, lang = fetch_captions(video.video_id)
+                method = "captions"
+                print("done", file=sys.stderr)
+            except NoTranscriptError:
+                print("no captions, downloading audio... transcribing...", end=" ", file=sys.stderr, flush=True)
+                try:
+                    with tempfile.TemporaryDirectory() as tmp_dir:
+                        text, lang = transcribe_audio(video.video_id, args.model, tmp_dir)
+                    method = "whisper"
+                    whisper_model = args.model
+                    print("done", file=sys.stderr)
+                except WhisperError as e:
+                    print(f"FAILED: {e}", file=sys.stderr)
+                    counts["failed"] += 1
+                    failures.append({"video_id": video.video_id, "reason": str(e)})
+                    continue
 
-    print(build_result_json(
-        total=total,
-        captions=counts["captions"],
-        whisper=counts["whisper"],
-        skipped=counts["skipped"],
-        live=counts["live"],
-        failed=counts["failed"],
-        transcribed_ids=transcribed_ids,
-        failures=failures
-    ))
+            # Write transcript (atomic via .tmp)
+            tmp_path = transcript_path.with_suffix(".tmp")
+            tmp_path.write_text(text, encoding="utf-8")
+            tmp_path.replace(transcript_path)
 
-def run_summaries_mode(video_ids: list[str], db_path: str) -> None:
-    conn = init_db(db_path)
+            # Store in DB
+            summary = extract_summary(text)
+            insert_video(conn, {
+                "video_id": video.video_id,
+                "title": video.title,
+                "url": f"https://www.youtube.com/watch?v={video.video_id}",
+                "playlist_id": playlist_id,
+                "playlist_title": playlist_title,
+                "language": lang,
+                "method": method,
+                "whisper_model": whisper_model,
+                "summary": summary,
+                "transcript_path": str(transcript_path),
+            })
+            counts[method] += 1
+            transcribed_ids.append(video.video_id)
+
+        print(
+            f"Done. {total} videos encountered: "
+            f"{counts['captions']} captions, {counts['whisper']} Whisper, "
+            f"{counts['skipped']} skipped, {counts['live']} live, {counts['failed']} failed.",
+            file=sys.stderr
+        )
+
+        print(build_result_json(
+            total=total,
+            captions=counts["captions"],
+            whisper=counts["whisper"],
+            skipped=counts["skipped"],
+            live=counts["live"],
+            failed=counts["failed"],
+            transcribed_ids=transcribed_ids,
+            failures=failures
+        ))
+    finally:
+        conn.close()
+
+def run_summaries_mode(video_ids: list[str], conn) -> None:
     results = get_summaries(conn, video_ids)
     print(json.dumps(results))
 
-def build_result_json(**kwargs) -> str:
+def build_result_json(
+    total: int, captions: int, whisper: int, skipped: int,
+    live: int, failed: int, transcribed_ids: list, failures: list
+) -> str:
     return json.dumps({
-        "total": kwargs["total"],
-        "captions": kwargs["captions"],
-        "whisper": kwargs["whisper"],
-        "skipped": kwargs["skipped"],
-        "live": kwargs["live"],
-        "failed": kwargs["failed"],
-        "transcribed_ids": kwargs["transcribed_ids"],
-        "failures": kwargs["failures"],
+        "total": total,
+        "captions": captions,
+        "whisper": whisper,
+        "skipped": skipped,
+        "live": live,
+        "failed": failed,
+        "transcribed_ids": transcribed_ids,
+        "failures": failures,
     }, indent=2)
 
 if __name__ == "__main__":
