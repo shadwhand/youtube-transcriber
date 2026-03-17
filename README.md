@@ -21,14 +21,6 @@ pip install -r requirements.txt
 
 ### Make the script executable
 
-Update the shebang in `transcribe.py` with your username:
-
-```python
-#!/Users/<your-username>/youtube-transcriber/.venv/bin/python
-```
-
-Then:
-
 ```bash
 chmod +x transcribe.py
 ```

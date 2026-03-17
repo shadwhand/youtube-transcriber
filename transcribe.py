@@ -1,4 +1,4 @@
-#!/Users/jshin/Documents/youtube-transcriber/.venv/bin/python
+#!/usr/bin/env python3
 # transcribe.py
 import argparse, json, os, sys, tempfile
 from pathlib import Path
